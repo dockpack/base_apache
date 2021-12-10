@@ -216,8 +216,9 @@
     firewalld_state: "{{ ansible_facts.services['firewalld.service']['state'] }}"
   when: ansible_facts.services['firewalld.service'] is defined
 
-- debug:
-    msg: "Firewall state is: {{ firewalld_state }} "
+- name: Display firewalld_state
+  debug:
+    msg: "firewalld_state is: {{ firewalld_state }} "
 
 - name: Get active firewall zone
   when: firewalld_state == 'running'
