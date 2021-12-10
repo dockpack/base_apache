@@ -221,7 +221,9 @@
 
 - name: Get active firewall zone
   when: firewalld_state == 'running'
-  shell: firewall-cmd --get-active-zone|head -1
+  shell: |
+    set -o pipefail
+    firewall-cmd --get-active-zone|head -1
   register: zone
 
 - name: Firewalld configuration http
