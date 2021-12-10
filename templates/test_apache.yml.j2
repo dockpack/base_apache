@@ -1,0 +1,51 @@
+---
+# this is a template for Goss, not ansible.
+file:
+{% if apache_https_transport is true %}
+  /etc/httpd/conf.d/ssl.conf:
+    exists: true
+    mode: "0644"
+    owner: root
+    group: root
+    filetype: file
+{% endif %}
+  /etc/httpd/conf.d:
+    exists: true
+    mode: "0755"
+    owner: root
+    group: root
+    filetype: directory
+    contains: []
+  /etc/httpd/conf.d/autoindex.conf:
+    exists: true
+    mode: "0644"
+    owner: root
+    group: root
+    filetype: file
+    contains: []
+  /etc/httpd/conf.d/welcome.conf:
+    exists: true
+    mode: "0644"
+    owner: root
+    group: root
+    filetype: file
+    contains: []
+  /etc/httpd/conf/httpd.conf:
+    exists: true
+    mode: "0644"
+    owner: root
+    group: root
+    filetype: file
+    contains: []
+package:
+  httpd24-httpd:
+    installed: true
+port:
+  tcp:80:
+    listening: true
+  tcp:443:
+    listening: {{ apache_https_transport }}
+process:
+  httpd:
+    running: true
+...

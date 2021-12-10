@@ -1,0 +1,11 @@
+---
+
+# Set to any other value to manage /etc/httpd/conf.d/ssl.conf elsewhere
+ssl_config: 'default'
+goss_test_directory: /etc/goss.d
+apache_https_transport: true
+hsts_max_age: 10368001
+x_frame_options: DENY
+x_content_type_options: nosniff
+ProxyPreserveHost: 'Off'
+...

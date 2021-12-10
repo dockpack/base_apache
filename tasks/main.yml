@@ -1,0 +1,252 @@
+---
+# tasks for jenkins
+
+- name: Ensure goss test directory is present
+  file:
+    path: "{{ goss_test_directory }}"
+    state: directory
+    mode: 0755
+
+- name: Ensure goss test file is present
+  template:
+    src: test_apache.yml.j2
+    dest: "{{ goss_test_directory }}/test_apache.yml"
+    mode: 0644
+
+- name: Install centos software collections
+  package:
+    name: centos-release-scl-rh
+    state: present
+  when: ansible_distribution == 'CentOS'
+
+- name: Enable rhel software collections
+  command: "yum-config-manager --enable rhel-server-rhscl-7-rpms"
+  when: ansible_distribution == 'Red Hat Enterprise Linux'
+
+- name: Uninstall vulnerable RPMs for Apache web server
+  yum:
+    name:
+      - httpd
+      - httpd-tools
+      - mod_ssl
+    state: absent
+  register: legacy
+
+- name: Install RPMs for Apache web server 2.4
+  yum:
+    name:
+      - openssl-devel
+      - httpd24-httpd
+      - httpd24-mod_ssl
+      - httpd24-httpd-tools
+      - httpd24-mod_security
+      - httpd24-mod_auth_kerb
+      - httpd24-mod_ldap
+      - httpd24-mod_session
+    state: present
+
+- name: Enable apache
+  systemd:
+    name: httpd24-httpd.service
+    enabled: true
+    daemon_reload: true
+  notify: Restart httpd
+
+- name: Verify /var/www
+  stat:
+    path: /var/www
+  register: content
+
+- name: Move /var/www content
+  when:
+    - content.stat.isdir is defined
+    - content.stat.isdir|bool
+  shell: mv /var/www/* /opt/rh/httpd24/root/var/www/
+
+- name: Remove /var/www to symlink content
+  when:
+    - content.stat.isdir is defined
+    - content.stat.isdir|bool
+  file:
+    path: /var/www/
+    state: absent
+
+- name: Symlink content
+  file:
+    path: /var/www
+    src: /opt/rh/httpd24/root/var/www
+    state: link
+    force: true
+    owner: root
+    group: root
+
+- name: Verify /var/www/html/index.html
+  stat:
+    path: /var/www/html/index.html
+  register: homepage
+
+- name: Create minimal homepage
+  when:
+    - homepage.stat.isfile is defined
+    - not homepage.stat.isfile|bool
+  copy:
+    dest: /var/wwwh/html/index.html
+    content: '<html><body><div>{{ inventory_hostname }}</div></body></html>'
+    owner: apache
+    group: root
+    mode: 0644
+
+- name: Verify /etc/httpd
+  stat:
+    path: /etc/httpd
+  register: config
+
+- name: Remove /etc/httpd to symlink config
+  when:
+    - config.stat.isdir is defined
+    - config.stat.isdir|bool
+  file:
+    path: /etc/httpd
+    state: absent
+
+- name: Symlink config
+  file:
+    path: /etc/httpd
+    src: /opt/rh/httpd24/root/etc/httpd
+    state: link
+    force: true
+    owner: root
+    group: root
+
+- name: Disable ftp proxy module
+  lineinfile:
+    path: /etc/httpd/conf.modules.d/00-proxy.conf
+    regexp: '^LoadModule proxy_ftp_module'
+    line: '#LoadModule proxy_ftp_module modules/mod_proxy_ftp.so'
+    state: present
+
+- name: Disable uwsgi proxy module
+  lineinfile:
+    path: /etc/httpd/conf.modules.d/00-proxy.conf
+    regexp: '^LoadModule proxy_uwsgi_module'
+    line: '#LoadModule proxy_uwsgi_module modules/mod_proxy_uwsgi.so'
+    state: present
+
+- name: Disable http2 module
+  lineinfile:
+    path: /etc/httpd/conf.modules.d/00-base.conf
+    regexp: '^LoadModule http2_module'
+    line: '#LoadModule http2_module modules/mod_http2.so'
+    state: present
+
+- name: Disable auth_digest module
+  lineinfile:
+    path: /etc/httpd/conf.modules.d/00-base.conf
+    regexp: '^LoadModule auth_digest_module'
+    line: '#LoadModule auth_digest_module modules/mod_auth_digest.so'
+    state: present
+
+- name: Enable directory index
+  lineinfile:
+    path: /etc/httpd/conf.d/welcome.conf
+    regexp: '    Options'
+    line: '    Options Indexes'
+    state: present
+    mode: 0644
+  notify: Restart httpd
+
+- name: Enable directory indexes
+  template:
+    src: autoindex.conf
+    dest: /etc/httpd/conf.d/
+    owner: root
+    group: root
+    mode: 0644
+  notify: Restart httpd
+
+- name: Configure vhost
+  when:
+    - apache_https_transport is defined
+    - apache_https_transport|bool
+  template:
+    src: vhost.conf
+    dest: /etc/httpd/conf.d/
+    owner: root
+    group: root
+    mode: 0644
+  notify: Restart httpd
+
+- name: Configure ssl/tls
+  when:
+    - apache_https_transport is defined
+    - apache_https_transport|bool
+    - ssl_config is defined
+    - ssl_config == 'default'
+  template:
+    src: ssl.conf
+    dest: /etc/httpd/conf.d/
+    owner: root
+    group: root
+    mode: 0644
+  notify: Restart httpd
+
+- name: Unconfigure ssl/tls
+  when: not apache_https_transport
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/httpd/conf.d/vhost.conf
+    - /etc/httpd/conf.d/ssl.conf
+  notify: Restart httpd
+
+- name: Enable network connect for webserver
+  when: ansible_facts.selinux.status in [ "enforcing", "permissive" ]
+  seboolean:
+    name: httpd_can_network_connect
+    persistent: true
+    state: true
+
+- name: Get service facts
+  service_facts:
+
+- name: Determine firewalld_state
+  set_fact:
+    # yamllint disable-line rule:line-length
+    firewalld_state: "{{ ansible_facts.services['firewalld.service']['state'] }}"
+  when: ansible_facts.services['firewalld.service'] is defined
+
+- debug:
+    msg: "Firewall state is: {{ firewalld_state }} "
+
+- name: Get active firewall zone
+  when: firewalld_state == 'running'
+  shell: firewall-cmd --get-active-zone|head -1
+  register: zone
+
+- name: Firewalld configuration http
+  when: firewalld_state == 'running'
+  firewalld:
+    service: http
+    permanent: true
+    state: enabled
+    immediate: true
+    zone: "{{ zone.stdout }}"
+
+- name: Firewalld configuration https
+  when:
+    - firewalld_state == 'running'
+    - apache_https_transport is defined
+    - apache_https_transport|bool
+  firewalld:
+    service: https
+    permanent: true
+    state: enabled
+    immediate: true
+    zone: "{{ zone.stdout }}"
+
+- name: Start apache
+  systemd:
+    name: httpd24-httpd.service
+    state: started
+...

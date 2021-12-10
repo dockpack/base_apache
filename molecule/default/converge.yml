@@ -1,0 +1,11 @@
+---
+
+- name: Converge
+  hosts: all
+  vars:
+    apache_https_transport: false
+  tasks:
+    - name: "Include base_apache"
+      include_role:
+        name: "base_apache"
+...
