@@ -217,14 +217,18 @@
   when: ansible_facts.services['firewalld.service'] is defined
 
 - name: Get active firewall zone
-  when: firewalld_state == 'running'
+  when:
+    - ansible_facts.services['firewalld.service'] is defined
+    - firewalld_state == 'running'
   shell: |
     set -o pipefail
     firewall-cmd --get-active-zone|head -1
   register: zone
 
 - name: Firewalld configuration http
-  when: firewalld_state == 'running'
+  when:
+    - ansible_facts.services['firewalld.service'] is defined
+    - firewalld_state == 'running'
   firewalld:
     service: http
     permanent: true
@@ -234,6 +238,7 @@
 
 - name: Firewalld configuration https
   when:
+    - ansible_facts.services['firewalld.service'] is defined
     - firewalld_state == 'running'
     - apache_https_transport is defined
     - apache_https_transport|bool
